@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Disk Analyzer</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #151821;
+    --surface2: #1c2030;
+    --border: #252a3a;
+    --text: #e8eaf0;
+    --muted: #5a607a;
+    --accent: #7c6af7;
+    --c1: #f97316; --c2: #eab308; --c3: #22c55e;
+    --c4: #06b6d4; --c5: #8b5cf6; --c6: #ec4899;
+    --c7: #f43f5e; --c8: #14b8a6; --c9: #a78bfa;
+    --c10: #fb923c; --c11: #4ade80; --c12: #38bdf8;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: 'JetBrains Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    max-width: 430px;
+    margin: 0 auto;
+    overflow-x: hidden;
+  }
+
+  /* Header */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header h1 { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 800; letter-spacing: 0.05em; }
+  .header .scan-btn {
+    background: var(--accent); border: none; color: #fff;
+    padding: 7px 14px; border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
+    cursor: pointer; transition: opacity 0.2s;
+  }
+  .header .scan-btn:active { opacity: 0.7; }
+
+  /* Storage summary bar */
+  .storage-bar-wrap { padding: 16px 20px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .storage-labels { display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .storage-labels span { font-size: 11px; color: var(--muted); }
+  .storage-labels .used { color: var(--text); font-weight: 600; }
+  .bar-track { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; display: flex; }
+  .bar-seg { height: 100%; transition: width 0.8s ease; }
+
+  /* Chart section */
+  .chart-section {
+    padding: 20px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  #sunburst-canvas { border-radius: 50%; }
+  .chart-center-label {
+    font-family: 'Syne', sans-serif; font-weight: 800;
+    font-size: 14px; text-align: center;
+    margin-top: -10px;
+    color: var(--text);
+  }
+
+  /* Breadcrumb */
+  .breadcrumb {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
+    padding: 10px 20px;
+    background: var(--surface2); border-top: 1px solid var(--border);
+  }
+  .breadcrumb span { font-size: 11px; color: var(--muted); cursor: pointer; }
+  .breadcrumb span:last-child { color: var(--text); }
+  .breadcrumb .sep { font-size: 11px; color: var(--border); }
+
+  /* File list */
+  .file-list { padding: 0 0 80px; }
+  .file-item {
+    display: flex; align-items: center;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.15s;
+    active: { background: var(--surface2); }
+  }
+  .file-item:active { background: var(--surface2); }
+  .color-dot {
+    width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; margin-right: 12px;
+  }
+  .file-info { flex: 1; min-width: 0; }
+  .file-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-meta { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .file-right { text-align: right; flex-shrink: 0; margin-left: 12px; }
+  .file-size { font-size: 13px; font-weight: 700; }
+  .file-bar { height: 3px; border-radius: 2px; margin-top: 4px; min-width: 40px; transition: width 0.5s; }
+  .arrow { font-size: 12px; color: var(--muted); margin-left: 8px; }
+
+  /* Tooltip */
+  .tooltip {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 10px 16px; border-radius: 12px;
+    font-size: 12px; z-index: 200;
+    pointer-events: none;
+    opacity: 0; transition: opacity 0.2s;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .tooltip.show { opacity: 1; }
+  .tooltip strong { display: block; font-size: 14px; font-weight: 700; }
+
+  /* Bottom nav */
+  .bottom-nav {
+    position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 100%; max-width: 430px;
+    background: var(--surface); border-top: 1px solid var(--border);
+    display: flex; justify-content: space-around; padding: 8px 0 12px;
+    z-index: 100;
+  }
+  .nav-btn { background: none; border: none; color: var(--muted); font-size: 10px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px 16px; }
+  .nav-btn.active { color: var(--accent); }
+  .nav-btn svg { width: 20px; height: 20px; }
+
+  /* Scan overlay */
+  .scan-overlay {
+    position: fixed; inset: 0; background: var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 300; opacity: 0; pointer-events: none; transition: opacity 0.3s;
+  }
+  .scan-overlay.active { opacity: 1; pointer-events: all; }
+  .scan-ring {
+    width: 100px; height: 100px; border-radius: 50%;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 24px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .scan-text { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 18px; margin-bottom: 8px; }
+  .scan-sub { font-size: 11px; color: var(--muted); }
+  .scan-path { font-size: 10px; color: var(--accent); margin-top: 8px; max-width: 280px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⬡ DISK ANALYZER</h1>
+  <button class="scan-btn" onclick="startScan()">SCAN</button>
+</div>
+
+<div class="storage-bar-wrap">
+  <div class="storage-labels">
+    <span class="used" id="used-label">46.7 GB used</span>
+    <span id="free-label">17.3 GB free</span>
+  </div>
+  <div class="bar-track" id="bar-track"></div>
+</div>
+
+<div class="chart-section">
+  <canvas id="sunburst-canvas" width="300" height="300"></canvas>
+  <div class="chart-center-label" id="center-label">/ — 46.7 GB</div>
+</div>
+
+<div class="breadcrumb" id="breadcrumb"></div>
+
+<div class="file-list" id="file-list"></div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<div class="bottom-nav">
+  <button class="nav-btn active">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+    Files
+  </button>
+  <button class="nav-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+    Storage
+  </button>
+  <button class="nav-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+    Large Files
+  </button>
+</div>
+
+<div class="scan-overlay" id="scan-overlay">
+  <div class="scan-ring"></div>
+  <div class="scan-text">SCANNING</div>
+  <div class="scan-sub">Analyzing disk usage...</div>
+  <div class="scan-path" id="scan-path">/home/user</div>
+</div>
+
+<script>
+const COLORS = ['#f97316','#eab308','#22c55e','#06b6d4','#8b5cf6','#ec4899','#f43f5e','#14b8a6','#a78bfa','#fb923c','#4ade80','#38bdf8','#e879f9','#f59e0b','#10b981'];
+
+// Data model
+const rootData = {
+  name: '/', size: 46.7, color: '#7c6af7',
+  children: [
+    { name: 'home', size: 16.3, color: COLORS[0], items: 215044, modified: 'Today',
+      children: [
+        { name: 'Downloads', size: 7.2, color: COLORS[0], items: 342, modified: 'Today', children: [
+          { name: 'Videos', size: 4.1, color: COLORS[1], items: 23, modified: '2 days' },
+          { name: 'ISO Files', size: 2.1, color: COLORS[2], items: 5, modified: '1 week' },
+          { name: 'Archives', size: 1.0, color: COLORS[3], items: 314, modified: 'Today' },
+        ]},
+        { name: 'Documents', size: 3.4, color: COLORS[1], items: 1203, modified: 'Today', children: [
+          { name: 'Projects', size: 2.1, color: COLORS[4], items: 870, modified: 'Today' },
+          { name: 'PDFs', size: 0.8, color: COLORS[5], items: 124, modified: '3 days' },
+          { name: 'Notes', size: 0.5, color: COLORS[6], items: 209, modified: 'Today' },
+        ]},
+        { name: 'Pictures', size: 2.8, color: COLORS[2], items: 1847, modified: '2 days' },
+        { name: '.cache', size: 1.9, color: COLORS[7], items: 12654, modified: 'Today' },
+        { name: 'Music', size: 0.7, color: COLORS[8], items: 198, modified: '1 month' },
+        { name: 'Desktop', size: 0.3, color: COLORS[9], items: 12, modified: 'Today' },
+      ]
+    },
+    { name: 'usr', size: 14.4, color: COLORS[1], items: 282849, modified: '1 day',
+      children: [
+        { name: 'lib', size: 8.2, color: COLORS[1], items: 142000, modified: '1 day' },
+        { name: 'share', size: 3.6, color: COLORS[2], items: 98000, modified: '1 day' },
+        { name: 'bin', size: 1.4, color: COLORS[3], items: 32000, modified: '1 day' },
+        { name: 'include', size: 0.8, color: COLORS[4], items: 8000, modified: '1 week' },
+        { name: 'local', size: 0.4, color: COLORS[5], items: 2849, modified: '1 day' },
+      ]
+    },
+    { name: 'swapfile', size: 8.6, color: COLORS[2], items: 0, modified: '4 months' },
+    { name: 'var', size: 5.1, color: COLORS[3], items: 18650, modified: 'Today',
+      children: [
+        { name: 'log', size: 2.8, color: COLORS[3], items: 342, modified: 'Today' },
+        { name: 'cache', size: 1.6, color: COLORS[4], items: 14200, modified: 'Today' },
+        { name: 'lib', size: 0.5, color: COLORS[5], items: 3800, modified: 'Today' },
+        { name: 'tmp', size: 0.2, color: COLORS[6], items: 308, modified: 'Today' },
+      ]
+    },
+    { name: 'opt', size: 2.1, color: COLORS[4], items: 47624, modified: '26 days' },
+    { name: 'boot', size: 0.21, color: COLORS[5], items: 303, modified: 'Today' },
+    { name: 'etc', size: 0.016, color: COLORS[6], items: 2103, modified: 'Today' },
+    { name: 'tmp', size: 0.00012, color: COLORS[7], items: 25, modified: 'Today' },
+    { name: 'snap', size: 0.000061, color: COLORS[8], items: 15, modified: 'Today' },
+  ]
+};
+
+let currentNode = rootData;
+let breadcrumbPath = [rootData];
+
+function formatSize(gb) {
+  if (gb >= 1) return gb.toFixed(1) + ' GB';
+  if (gb >= 0.001) return (gb * 1024).toFixed(1) + ' MB';
+  return (gb * 1024 * 1024).toFixed(0) + ' KB';
+}
+
+// ---- Storage bar ----
+function renderStorageBar() {
+  const total = 64;
+  const used = 46.7;
+  const cats = [
+    { label: 'Home', pct: (16.3/total*100).toFixed(1), color: COLORS[0] },
+    { label: 'System', pct: ((14.4+8.6+5.1)/total*100).toFixed(1), color: COLORS[1] },
+    { label: 'Apps', pct: (2.1/total*100).toFixed(1), color: COLORS[4] },
+    { label: 'Other', pct: ((46.7-16.3-14.4-8.6-5.1-2.1)/total*100).toFixed(1), color: COLORS[7] },
+  ];
+  document.getElementById('used-label').textContent = '46.7 GB used';
+  document.getElementById('free-label').textContent = '17.3 GB free';
+  const track = document.getElementById('bar-track');
+  track.innerHTML = cats.map(c => `<div class="bar-seg" style="width:${c.pct}%;background:${c.color}"></div>`).join('') +
+    `<div class="bar-seg" style="width:${(17.3/total*100).toFixed(1)}%;background:#1c2030"></div>`;
+}
+
+// ---- Sunburst ----
+const PI2 = Math.PI * 2;
+let hitAreas = [];
+
+function drawSunburst(node) {
+  const canvas = document.getElementById('sunburst-canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W/2, cy = H/2;
+  ctx.clearRect(0, 0, W, H);
+  hitAreas = [];
+
+  const children = node.children || [];
+  const total = node.size;
+  const innerR = 60, outerR1 = 110;
+
+  // Draw center circle
+  ctx.beginPath();
+  ctx.arc(cx, cy, innerR, 0, PI2);
+  ctx.fillStyle = '#1c2030';
+  ctx.fill();
+
+  if (children.length === 0) return;
+
+  let startAngle = -Math.PI / 2;
+
+  children.forEach((child, i) => {
+    const fraction = child.size / total;
+    const sweep = fraction * PI2;
+    const endAngle = startAngle + sweep;
+
+    // Main arc
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, outerR1, startAngle, endAngle);
+    ctx.closePath();
+    ctx.fillStyle = child.color;
+    ctx.fill();
+    ctx.strokeStyle = '#0d0f14';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Sub-children ring
+    if (child.children && child.children.length > 0) {
+      let subStart = startAngle;
+      child.children.forEach(sub => {
+        const subFrac = sub.size / child.size;
+        const subSweep = sweep * subFrac;
+        ctx.beginPath();
+        ctx.arc(cx, cy, outerR1 + 28, subStart, subStart + subSweep);
+        ctx.arc(cx, cy, outerR1 + 2, subStart + subSweep, subStart, true);
+        ctx.closePath();
+        ctx.fillStyle = sub.color;
+        ctx.fill();
+        ctx.strokeStyle = '#0d0f14';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        subStart += subSweep;
+      });
+    }
+
+    hitAreas.push({ child, startAngle, endAngle, innerR, outerR: outerR1 + 28 });
+    startAngle = endAngle;
+  });
+
+  // Center text
+  ctx.fillStyle = '#e8eaf0';
+  ctx.font = 'bold 15px Syne, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(formatSize(node.size), cx, cy);
+}
+
+function handleCanvasTap(e) {
+  const canvas = document.getElementById('sunburst-canvas');
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const touch = e.touches ? e.touches[0] : e;
+  const x = (touch.clientX - rect.left) * scaleX - canvas.width/2;
+  const y = (touch.clientY - rect.top) * scaleY - canvas.height/2;
+  const dist = Math.sqrt(x*x + y*y);
+  const angle = Math.atan2(y, x);
+
+  for (const hit of hitAreas) {
+    if (dist >= hit.innerR && dist <= hit.outerR) {
+      let a = angle;
+      if (a < -Math.PI/2) a += PI2;
+      let s = hit.startAngle < -Math.PI/2 ? hit.startAngle + PI2 : hit.startAngle;
+      let en = hit.endAngle < -Math.PI/2 ? hit.endAngle + PI2 : hit.endAngle;
+      // Normalize
+      const normA = ((angle - (-Math.PI/2)) + PI2) % PI2;
+      const normS = ((hit.startAngle - (-Math.PI/2)) + PI2) % PI2;
+      const normE = ((hit.endAngle - (-Math.PI/2)) + PI2) % PI2;
+      const inArc = normE > normS ? (normA >= normS && normA <= normE) : (normA >= normS || normA <= normE);
+      if (inArc) {
+        if (hit.child.children) {
+          navigateTo(hit.child);
+        } else {
+          showTooltip(hit.child);
+        }
+        return;
+      }
+    }
+  }
+}
+
+// ---- File list ----
+function renderFileList(node) {
+  const list = document.getElementById('file-list');
+  const children = [...(node.children || [])].sort((a,b) => b.size - a.size);
+  const maxSize = children[0]?.size || 1;
+
+  list.innerHTML = children.map(child => `
+    <div class="file-item" onclick="handleFileClick('${child.name}')">
+      <div class="color-dot" style="background:${child.color}"></div>
+      <div class="file-info">
+        <div class="file-name">${child.name}</div>
+        <div class="file-meta">${child.items !== undefined ? child.items.toLocaleString() + ' items · ' : ''}${child.modified || ''}</div>
+      </div>
+      <div class="file-right">
+        <div class="file-size">${formatSize(child.size)}</div>
+        <div class="file-bar" style="background:${child.color};width:${Math.max(10,(child.size/maxSize)*60)}px"></div>
+      </div>
+      ${child.children ? '<span class="arrow">›</span>' : ''}
+    </div>
+  `).join('');
+}
+
+function handleFileClick(name) {
+  const child = currentNode.children?.find(c => c.name === name);
+  if (!child) return;
+  if (child.children) {
+    navigateTo(child);
+  } else {
+    showTooltip(child);
+  }
+}
+
+function navigateTo(node) {
+  breadcrumbPath.push(node);
+  currentNode = node;
+  update();
+}
+
+function navigateToBreadcrumb(idx) {
+  breadcrumbPath = breadcrumbPath.slice(0, idx + 1);
+  currentNode = breadcrumbPath[breadcrumbPath.length - 1];
+  update();
+}
+
+function update() {
+  drawSunburst(currentNode);
+  renderFileList(currentNode);
+  document.getElementById('center-label').textContent = `${currentNode.name} — ${formatSize(currentNode.size)}`;
+  renderBreadcrumb();
+}
+
+function renderBreadcrumb() {
+  const bc = document.getElementById('breadcrumb');
+  bc.innerHTML = breadcrumbPath.map((n, i) => {
+    const isLast = i === breadcrumbPath.length - 1;
+    return `${i > 0 ? '<span class="sep">›</span>' : ''}<span onclick="navigateToBreadcrumb(${i})">${n.name}</span>`;
+  }).join('');
+}
+
+// ---- Tooltip ----
+let tooltipTimer;
+function showTooltip(item) {
+  const tt = document.getElementById('tooltip');
+  tt.innerHTML = `<strong>${item.name}</strong>${formatSize(item.size)} · ${item.modified || ''}`;
+  tt.classList.add('show');
+  clearTimeout(tooltipTimer);
+  tooltipTimer = setTimeout(() => tt.classList.remove('show'), 2500);
+}
+
+// ---- Scan simulation ----
+const fakePaths = ['/home/user/Downloads','/home/user/Documents','/home/user/.cache','/usr/lib/x86_64','/usr/share/icons','/var/log/journal','/opt/google/chrome'];
+function startScan() {
+  const overlay = document.getElementById('scan-overlay');
+  const pathEl = document.getElementById('scan-path');
+  overlay.classList.add('active');
+  let i = 0;
+  const interval = setInterval(() => {
+    pathEl.textContent = fakePaths[i % fakePaths.length];
+    i++;
+  }, 400);
+  setTimeout(() => {
+    clearInterval(interval);
+    overlay.classList.remove('active');
+    // Re-render with slight random variation
+    update();
+  }, 3000);
+}
+
+// ---- Init ----
+const canvas = document.getElementById('sunburst-canvas');
+canvas.addEventListener('click', handleCanvasTap);
+canvas.addEventListener('touchend', e => { e.preventDefault(); handleCanvasTap(e); }, { passive: false });
+
+renderStorageBar();
+update();
+</script>
+</body>
+</html>
