@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Disk Analyzer</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0e1117; --surface:#161b27; --surface2:#1d2235;
+  --border:#252b3d; --text:#dde2f0; --muted:#4a5270; --accent:#6c63ff;
+  --red:#e25555;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;}
+body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--text);max-width:430px;margin:0 auto;display:flex;flex-direction:column;height:100%;overflow:hidden;}
+
+/* TOPBAR */
+.topbar{display:flex;align-items:center;gap:6px;padding:10px 12px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;}
+.back-btn{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:2px 8px;border-radius:6px;line-height:1;flex-shrink:0;}
+.back-btn:active{background:var(--border);}
+.bc-bar{flex:1;display:flex;align-items:center;gap:3px;overflow:hidden;}
+.bc-seg{font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap;max-width:80px;overflow:hidden;text-overflow:ellipsis;}
+.bc-seg:last-child{color:var(--text);font-weight:700;}
+.bc-sep{font-size:11px;color:var(--border);flex-shrink:0;}
+.scan-btn{background:var(--accent);border:none;color:#fff;padding:6px 12px;border-radius:7px;font-family:inherit;font-size:10px;font-weight:700;cursor:pointer;flex-shrink:0;}
+.scan-btn:active{opacity:.75;}
+
+/* STORAGE BAR */
+.storage-wrap{padding:10px 14px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;}
+.storage-meta{display:flex;justify-content:space-between;margin-bottom:6px;font-size:10px;color:var(--muted);}
+.storage-meta .used{color:var(--text);font-weight:700;}
+.bar-track{height:6px;background:var(--border);border-radius:3px;overflow:hidden;display:flex;}
+.bar-seg{height:100%;}
+
+/* CHART */
+.chart-wrap{flex-shrink:0;position:relative;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:8px;}
+#chart-canvas{display:block;touch-action:none;}
+.chart-label{position:absolute;background:rgba(8,10,16,.94);border:1px solid var(--border);padding:5px 10px;border-radius:8px;font-size:11px;pointer-events:none;opacity:0;transition:opacity .12s;white-space:nowrap;z-index:10;max-width:200px;}
+.chart-label.show{opacity:1;}
+.chart-label strong{display:block;font-weight:700;font-size:12px;margin-bottom:1px;}
+.chart-toggle{position:absolute;bottom:12px;right:12px;display:flex;gap:4px;}
+.toggle-btn{background:var(--surface2);border:1px solid var(--border);color:var(--muted);width:32px;height:32px;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.toggle-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+.toggle-btn svg{width:17px;height:17px;}
+.toggle-tip{position:absolute;bottom:48px;right:12px;background:var(--surface);border:1px solid var(--border);padding:4px 8px;border-radius:6px;font-size:10px;pointer-events:none;opacity:0;transition:opacity .2s;white-space:nowrap;}
+.toggle-tip.show{opacity:1;}
+
+/* LIST HEADER */
+.list-hdr{display:flex;align-items:center;padding:6px 12px;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0;}
+.list-hdr span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;user-select:none;}
+.hcol-name{flex:1;}
+.hcol-size{width:66px;text-align:right;cursor:pointer;}
+.hcol-size.active{color:var(--accent);}
+.hcol-items{width:76px;text-align:right;}
+.hcol-mod{width:62px;text-align:right;}
+
+/* FILE LIST */
+.file-list{flex:1;overflow-y:auto;overflow-x:hidden;}
+.file-list::-webkit-scrollbar{width:3px;}
+.file-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+.file-row{display:flex;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;}
+.file-row:active,.file-row.sel{background:var(--surface2);}
+.file-row.hi{background:rgba(108,99,255,.1);}
+.exp-btn{width:16px;height:16px;display:flex;align-items:center;justify-content:center;background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;flex-shrink:0;margin-right:3px;border-radius:3px;transition:transform .15s;line-height:1;}
+.exp-btn.open{transform:rotate(90deg);}
+.swatch{width:24px;height:13px;border-radius:3px;flex-shrink:0;margin-right:8px;border:1px solid rgba(255,255,255,.07);}
+.fname{flex:1;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fname.dim{color:var(--red);font-weight:400;}
+.cval{font-size:11px;color:var(--muted);text-align:right;white-space:nowrap;}
+.cval.sz{width:66px;color:var(--text);font-weight:700;}
+.cval.it{width:76px;}
+.cval.md{width:62px;}
+
+/* TOOLTIP */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);padding:8px 14px;border-radius:10px;font-size:11px;pointer-events:none;opacity:0;transition:opacity .2s;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.5);text-align:center;white-space:nowrap;}
+.toast.show{opacity:1;}
+.toast strong{display:block;font-size:13px;font-weight:700;margin-bottom:2px;}
+
+/* DELETE BAR */
+.del-bar{position:fixed;bottom:0;left:50%;transform:translateX(-50%) translateY(100%);width:100%;max-width:430px;background:var(--surface);border-top:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;gap:8px;z-index:300;transition:transform .2s;}
+.del-bar.show{transform:translateX(-50%) translateY(0);}
+.del-name{flex:1;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dbtn{border:none;padding:7px 13px;border-radius:7px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;}
+.dbtn.cancel{background:var(--surface2);border:1px solid var(--border);color:var(--text);}
+.dbtn.del{background:var(--red);color:#fff;}
+
+/* SCAN OVERLAY */
+.scan-ov{position:fixed;inset:0;background:rgba(14,17,23,.97);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:500;opacity:0;pointer-events:none;transition:opacity .3s;}
+.scan-ov.active{opacity:1;pointer-events:all;}
+.spin{width:60px;height:60px;border-radius:50%;border:3px solid var(--border);border-top-color:var(--accent);animation:spin .7s linear infinite;margin-bottom:18px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.scan-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;margin-bottom:4px;}
+.scan-path{font-size:10px;color:var(--accent);max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:8px;}
+.scan-pct{font-size:10px;color:var(--muted);margin-top:4px;}
+.scan-bar-w{width:180px;height:3px;background:var(--border);border-radius:2px;margin-top:10px;overflow:hidden;}
+.scan-bar-f{height:100%;background:var(--accent);border-radius:2px;transition:width .25s;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <button class="back-btn" id="back-btn" onclick="goBack()">‹</button>
+  <div class="bc-bar" id="breadcrumb"></div>
+  <button class="scan-btn" onclick="startScan()">SCAN</button>
+</div>
+
+<div class="storage-wrap">
+  <div class="storage-meta">
+    <span class="used">46.7 GB used</span>
+    <span>17.3 GB free · 64 GB total</span>
+  </div>
+  <div class="bar-track" id="bar-track"></div>
+</div>
+
+<div class="chart-wrap" id="chart-wrap">
+  <canvas id="chart-canvas"></canvas>
+  <div class="chart-label" id="chart-label"><strong></strong><span></span></div>
+  <div class="chart-toggle">
+    <button class="toggle-btn active" id="btn-rings" onclick="setMode('rings')" title="Rings Chart">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg>
+    </button>
+    <button class="toggle-btn" id="btn-treemap" onclick="setMode('treemap')" title="Treemap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="8" height="12" rx="1"/><rect x="13" y="3" width="8" height="5" rx="1"/><rect x="3" y="17" width="18" height="4" rx="1"/><rect x="13" y="10" width="8" height="5" rx="1"/></svg>
+    </button>
+  </div>
+  <div class="toggle-tip" id="toggle-tip"></div>
+</div>
+
+<div class="list-hdr">
+  <span class="hcol-name">Folder</span>
+  <span class="hcol-size active" id="sort-hdr" onclick="toggleSort()">Size ▲</span>
+  <span class="hcol-items">Contents</span>
+  <span class="hcol-mod">Modified</span>
+</div>
+
+<div class="file-list" id="file-list"></div>
+
+<div class="toast" id="toast"></div>
+
+<div class="del-bar" id="del-bar">
+  <span class="del-name" id="del-name"></span>
+  <button class="dbtn cancel" onclick="cancelDel()">Cancel</button>
+  <button class="dbtn del" onclick="confirmDel()">Delete</button>
+</div>
+
+<div class="scan-ov" id="scan-ov">
+  <div class="spin"></div>
+  <div class="scan-title">SCANNING DISK</div>
+  <div class="scan-path" id="scan-path">/</div>
+  <div class="scan-pct" id="scan-pct">0%</div>
+  <div class="scan-bar-w"><div class="scan-bar-f" id="scan-fill" style="width:0%"></div></div>
+</div>
+
+<script>
+// ═══════════════ DATA ═══════════════
+const C = ['#e84040','#f97316','#f5c542','#84cc16','#22c55e','#14b8a6','#06b6d4','#3b82f6','#8b5cf6','#a855f7','#ec4899','#f43f5e','#10b981','#0ea5e9','#e879f9','#fb923c','#4ade80','#38bdf8','#c084fc','#f472b6'];
+
+const ROOT = {name:'/',size:46.7,color:'#6c63ff',items:566623,modified:'Today',children:[
+  {name:'home',size:16.3,color:C[0],items:215044,modified:'Today',children:[
+    {name:'Downloads',size:7.2,color:C[0],items:342,modified:'Today',children:[
+      {name:'Videos',size:4.1,color:C[1],items:23,modified:'2 days',children:[]},
+      {name:'ISO Files',size:2.1,color:C[6],items:5,modified:'1 week',children:[]},
+      {name:'Archives',size:0.8,color:C[4],items:314,modified:'Today',children:[]},
+      {name:'Misc',size:0.2,color:C[8],items:0,modified:'Today',children:[]},
+    ]},
+    {name:'Documents',size:3.4,color:C[1],items:1203,modified:'Today',children:[
+      {name:'Projects',size:2.1,color:C[6],items:870,modified:'Today',children:[]},
+      {name:'PDFs',size:0.8,color:C[2],items:124,modified:'3 days',children:[]},
+      {name:'Notes',size:0.5,color:C[4],items:209,modified:'Today',children:[]},
+    ]},
+    {name:'Pictures',size:2.8,color:C[2],items:1847,modified:'2 days',children:[]},
+    {name:'.cache',size:1.9,color:C[7],items:12654,modified:'Today',children:[]},
+    {name:'Music',size:0.7,color:C[9],items:198,modified:'1 month',children:[]},
+    {name:'Desktop',size:0.2,color:C[10],items:12,modified:'Today',children:[]},
+  ]},
+  {name:'usr',size:14.4,color:C[1],items:282849,modified:'1 day',children:[
+    {name:'lib',size:8.6,color:C[0],items:73686,modified:'1 day',children:[
+      {name:'x86_64-linux-gnu',size:4.2,color:C[0],items:28000,modified:'1 day',children:[]},
+      {name:'firmware',size:1.2,color:C[6],items:4000,modified:'1 month',children:[
+        {name:'drivers',size:0.6,color:C[3],items:120,modified:'1 month',children:[]},
+        {name:'amdgpu',size:0.4,color:C[8],items:80,modified:'2 months',children:[]},
+        {name:'intel',size:0.2,color:C[1],items:40,modified:'3 months',children:[]},
+      ]},
+      {name:'modules',size:1.8,color:C[4],items:20000,modified:'1 day',children:[]},
+      {name:'python3',size:0.8,color:C[2],items:8000,modified:'1 day',children:[]},
+      {name:'doc',size:0.4,color:C[10],items:6000,modified:'1 week',children:[]},
+      {name:'debug',size:0.2,color:C[9],items:7686,modified:'1 day',children:[]},
+    ]},
+    {name:'local',size:2.6,color:C[2],items:604,modified:'8 days',children:[
+      {name:'lib',size:2.6,color:C[0],items:21,modified:'8 days',children:[]},
+      {name:'bin',size:0.039,color:C[1],items:3,modified:'8 days',children:[]},
+      {name:'include',size:0.0053,color:C[2],items:527,modified:'9 months',children:[]},
+      {name:'share',size:0.00032,color:C[3],items:48,modified:'9 months',children:[]},
+      {name:'src',size:0.004,color:C[4],items:1,modified:'1 year',children:[]},
+      {name:'sbin',size:0.004,color:C[5],items:1,modified:'1 year',children:[]},
+      {name:'games',size:0.004,color:C[6],items:1,modified:'1 year',children:[]},
+      {name:'etc',size:0.004,color:C[7],items:1,modified:'1 year',children:[]},
+    ]},
+    {name:'share',size:1.7,color:C[3],items:100214,modified:'1 day',children:[]},
+    {name:'include',size:0.48,color:C[4],items:43122,modified:'1 day',children:[]},
+    {name:'bin',size:0.37,color:C[5],items:1665,modified:'1 day',children:[]},
+    {name:'src',size:0.32,color:C[6],items:59909,modified:'4 days',children:[]},
+    {name:'libexec',size:0.067,color:C[7],items:379,modified:'3 days',children:[]},
+    {name:'arm-linux-gnueabihf',size:0.041,color:C[8],items:2336,modified:'1 month',children:[]},
+    {name:'sbin',size:0.037,color:C[9],items:307,modified:'10 days',children:[]},
+    {name:'libx32',size:0.033,color:C[10],items:311,modified:'17 days',children:[]},
+    {name:'lib32',size:0.032,color:C[11],items:307,modified:'17 days',children:[]},
+  ]},
+  {name:'swapfile',size:8.6,color:C[2],items:0,modified:'4 months',children:null},
+  {name:'var',size:5.1,color:C[3],items:18650,modified:'Today',children:[
+    {name:'log',size:2.8,color:C[3],items:342,modified:'Today',children:[]},
+    {name:'cache',size:1.6,color:C[4],items:14200,modified:'Today',children:[]},
+    {name:'lib',size:0.5,color:C[5],items:3800,modified:'Today',children:[]},
+    {name:'tmp',size:0.2,color:C[6],items:308,modified:'Today',children:[]},
+  ]},
+  {name:'opt',size:2.1,color:C[4],items:47624,modified:'26 days',children:[]},
+  {name:'boot',size:0.211,color:C[5],items:303,modified:'Today',children:[]},
+  {name:'etc',size:0.016,color:C[6],items:2103,modified:'Today',children:[]},
+  {name:'tmp',size:0.00012,color:C[7],items:25,modified:'Today',children:null},
+  {name:'snap',size:0.000061,color:C[8],items:15,modified:'Today',children:[]},
+  {name:'lost+found',size:0,color:'transparent',items:0,modified:'10 months',children:null},
+  {name:'media',size:0.000008,color:C[9],items:2,modified:'7 days',children:[]},
+  {name:'root',size:0,color:'transparent',items:0,modified:'4 months',children:null},
+  {name:'srv',size:0.000004,color:C[10],items:1,modified:'1 year',children:null},
+  {name:'cdrom',size:0.000004,color:C[11],items:1,modified:'10 months',children:null},
+  {name:'mnt',size:0.000004,color:C[12],items:1,modified:'2 months',children:null},
+  {name:'.package-cache-mut...',size:0,color:'transparent',items:0,modified:'2 years',children:null},
+]};
+
+// ═══════════════ STATE ═══════════════
+let stack=[ROOT], mode='rings', sortAsc=false;
+let expanded=new Set(), delTarget=null, toastTimer=null;
+
+const cur=()=>stack[stack.length-1];
+const fmt=(gb)=>gb>=1?gb.toFixed(1)+' GB':gb>=0.001?(gb*1024).toFixed(1)+' MB':gb>=1e-6?(gb*1048576).toFixed(0)+' KB':'0 bytes';
+const fmtN=(n)=>n>0?n.toLocaleString()+' items':'';
+const pkey=(n)=>n.name+'_'+n.size;
+
+// ═══════════════ RENDER ═══════════════
+function render(){renderBC();renderStorageBar();drawChart();renderList();}
+
+// BREADCRUMB
+function renderBC(){
+  const el=document.getElementById('breadcrumb');
+  el.innerHTML=stack.map((n,i)=>(i>0?'<span class="bc-sep">›</span>':'')+`<span class="bc-seg" onclick="navTo(${i})">${n.name}</span>`).join('');
+  document.getElementById('back-btn').style.opacity=stack.length>1?'1':'0.3';
+}
+function navTo(i){stack=stack.slice(0,i+1);render();}
+function goBack(){if(stack.length>1){stack.pop();render();}}
+function into(n){if(n.children&&n.children.length>0){stack.push(n);render();}}
+
+// STORAGE BAR
+function renderStorageBar(){
+  const T=64, segs=[
+    {p:16.3/T,c:C[0]},{p:(14.4+8.6)/T,c:C[1]},{p:5.1/T,c:C[3]},
+    {p:2.1/T,c:C[4]},{p:(46.7-16.3-14.4-8.6-5.1-2.1)/T,c:C[7]}
+  ];
+  document.getElementById('bar-track').innerHTML=
+    segs.map(s=>`<div class="bar-seg" style="width:${(s.p*100).toFixed(2)}%;background:${s.c}"></div>`).join('')+
+    `<div class="bar-seg" style="width:${(17.3/T*100).toFixed(2)}%;background:var(--border)"></div>`;
+}
+
+// ═══════════════ CHART ═══════════════
+const CS=280; let cv,cx2;
+function initChart(){
+  cv=document.getElementById('chart-canvas');
+  cv.width=CS;cv.height=CS;cv.style.width=CS+'px';cv.style.height=CS+'px';
+  cx2=cv.getContext('2d');
+  cv.addEventListener('mousemove',onHover);
+  cv.addEventListener('click',onClick);
+  cv.addEventListener('touchmove',e=>{e.preventDefault();onHover(e.touches[0]);},{passive:false});
+  cv.addEventListener('touchend',e=>{e.preventDefault();onClick(e.changedTouches[0]);},{passive:false});
+}
+
+function setMode(m){
+  mode=m;
+  document.getElementById('btn-rings').classList.toggle('active',m==='rings');
+  document.getElementById('btn-treemap').classList.toggle('active',m==='treemap');
+  const tip=document.getElementById('toggle-tip');
+  tip.textContent=m==='rings'?'Rings Chart':'Treemap Chart';
+  tip.classList.add('show');setTimeout(()=>tip.classList.remove('show'),1500);
+  drawChart();
+}
+
+// ─ RINGS ─
+let rHits=[];
+function drawRings(){
+  const n=cur(); cx2.clearRect(0,0,CS,CS); rHits=[];
+  const children=(n.children||[]).filter(c=>c.size>0).sort((a,b)=>b.size-a.size);
+  const total=n.size, cxp=CS/2, cyp=CS/2;
+  const PI2=Math.PI*2, S=-Math.PI/2;
+  const R0=50, R1=96;
+
+  // BG
+  cx2.beginPath();cx2.arc(cxp,cyp,R1+38,0,PI2);cx2.fillStyle='#181d2c';cx2.fill();
+
+  let a=S;
+  children.forEach(child=>{
+    const sw=(child.size/total)*PI2, ea=a+sw;
+    // ring 1
+    cx2.beginPath();cx2.moveTo(cxp,cyp);cx2.arc(cxp,cyp,R1,a,ea);cx2.closePath();
+    cx2.fillStyle=child.color;cx2.fill();cx2.strokeStyle='#0e1117';cx2.lineWidth=1.5;cx2.stroke();
+    // ring 2
+    if(child.children&&child.children.length>0){
+      const s2=child.children.filter(x=>x.size>0);
+      let sa=a;
+      s2.forEach(sub=>{
+        const sf=sub.size/child.size, ss=sw*sf;
+        cx2.beginPath();cx2.arc(cxp,cyp,R1+28,sa,sa+ss);cx2.arc(cxp,cyp,R1+2,sa+ss,sa,true);cx2.closePath();
+        cx2.fillStyle=sub.color;cx2.fill();cx2.strokeStyle='#0e1117';cx2.lineWidth=1;cx2.stroke();
+        // ring 3
+        if(sub.children&&sub.children.length>0){
+          const s3=sub.children.filter(x=>x.size>0);let sa2=sa;
+          s3.forEach(s=>{
+            const sf2=s.size/sub.size,ss2=ss*sf2;
+            cx2.beginPath();cx2.arc(cxp,cyp,R1+42,sa2,sa2+ss2);cx2.arc(cxp,cyp,R1+30,sa2+ss2,sa2,true);cx2.closePath();
+            cx2.fillStyle=s.color;cx2.fill();cx2.strokeStyle='#0e1117';cx2.lineWidth=0.5;cx2.stroke();
+            sa2+=ss2;
+          });
+        }
+        sa+=ss;
+      });
+    }
+    rHits.push({node:child,sa:a,ea,r0:R0,r1:R1+42});
+    a=ea;
+  });
+  // center
+  cx2.beginPath();cx2.arc(cxp,cyp,R0,0,PI2);cx2.fillStyle='#0e1117';cx2.fill();
+  cx2.fillStyle='#dde2f0';cx2.font='bold 13px Syne,sans-serif';cx2.textAlign='center';cx2.textBaseline='middle';
+  cx2.fillText(fmt(n.size),cxp,cyp);
+}
+
+// ─ TREEMAP ─
+let tRects=[];
+function drawTreemap(){
+  const n=cur(); cx2.clearRect(0,0,CS,CS); tRects=[];
+  const kids=(n.children||[]).filter(c=>c.size>0).sort((a,b)=>b.size-a.size);
+  if(!kids.length) return;
+  squarify(kids,0,0,CS,CS,n.size);
+}
+
+function squarify(nodes,x,y,w,h,tot){
+  if(!nodes.length||!tot||w<2||h<2)return;
+  let rem=[...nodes], rx=x, ry=y, rw=w, rh=h;
+  while(rem.length){
+    const horiz=rw>=rh, dim=horiz?rh:rw;
+    let row=[],rsum=0,best=Infinity;
+    for(let i=0;i<rem.length;i++){
+      const s=(rem[i].size/tot)*(rw*rh);
+      row.push({n:rem[i],s}); rsum+=s;
+      const worst=Math.max(...row.map(r=>{const a=dim*dim*r.s/(rsum*rsum),b=rsum*rsum/(dim*dim*r.s);return Math.max(a,b);}));
+      if(worst>best){row.pop();rsum-=s;break;}
+      best=worst;
+    }
+    rem=rem.slice(row.length);
+    const strip=rsum/(horiz?rh:rw);
+    let pos=horiz?ry:rx;
+    row.forEach(({n,s})=>{
+      const len=s/strip;
+      const bx=horiz?rx:pos, by=horiz?pos:ry, bw=horiz?strip:len, bh=horiz?len:strip;
+      const P=2;
+      cx2.fillStyle=n.color; cx2.fillRect(bx+P,by+P,bw-P*2,bh-P*2);
+      cx2.strokeStyle='#0e1117';cx2.lineWidth=2;cx2.strokeRect(bx+P,by+P,bw-P*2,bh-P*2);
+      if(n.children&&n.children.length>0&&bw>30&&bh>22)
+        squarifyInner(n.children.filter(c=>c.size>0),bx+P*2,by+P*2,bw-P*4,bh-P*4,n.size);
+      if(bw>35&&bh>18){
+        cx2.fillStyle='rgba(0,0,0,.55)'; cx2.fillRect(bx+P,by+P,bw-P*2,17);
+        cx2.fillStyle='#fff'; cx2.font='700 9px JetBrains Mono,monospace';
+        cx2.textAlign='left'; cx2.textBaseline='middle';
+        const max=Math.floor((bw-10)/5.5);
+        cx2.fillText(n.name.length>max?n.name.slice(0,max)+'…':n.name,bx+P+3,by+P+8.5);
+      }
+      tRects.push({node:n,x:bx+P,y:by+P,w:bw-P*2,h:bh-P*2});
+      pos+=len;
+    });
+    if(horiz){rx+=strip;rw-=strip;}else{ry+=strip;rh-=strip;}
+  }
+}
+
+function squarifyInner(nodes,x,y,w,h,tot){
+  if(!nodes.length||!tot||w<8||h<8)return;
+  let rem=[...nodes],rx=x,ry=y,rw=w,rh=h;
+  while(rem.length&&rw>4&&rh>4){
+    const horiz=rw>=rh,dim=horiz?rh:rw;
+    let row=[],rsum=0;
+    rem.forEach(n=>{ row.push(n); rsum+=n.size; });
+    rem=[];
+    const strip=(rsum/tot)*(horiz?rw:rh);
+    let pos=horiz?ry:rx;
+    row.forEach(n=>{
+      const frac=n.size/rsum, len=frac*dim;
+      const bx=horiz?rx:pos, by=horiz?pos:ry, bw=horiz?strip:len, bh=horiz?len:strip;
+      cx2.strokeStyle='rgba(0,0,0,.4)'; cx2.lineWidth=1;
+      cx2.strokeRect(bx+1,by+1,bw-2,bh-2);
+      if(n.size>0){cx2.fillStyle=n.color+'55';cx2.fillRect(bx+1,by+1,bw-2,bh-2);}
+      pos+=len;
+    });
+    if(horiz){rx+=strip;rw-=strip;}else{ry+=strip;rh-=strip;}
+    break;
+  }
+}
+
+function drawChart(){if(!cx2)return; mode==='rings'?drawRings():drawTreemap();}
+
+// ─ Interaction ─
+function cpos(e){
+  const r=cv.getBoundingClientRect();
+  return{x:(e.clientX-r.left)*(CS/r.width),y:(e.clientY-r.top)*(CS/r.height)};
+}
+function findRing(x,y){
+  const PI2=Math.PI*2, cxp=CS/2, cyp=CS/2;
+  const dx=x-cxp, dy=y-cyp, d=Math.sqrt(dx*dx+dy*dy), ang=Math.atan2(dy,dx);
+  for(const h of rHits){
+    if(d<h.r0||d>h.r1)continue;
+    const na=((ang-(-Math.PI/2))+PI2)%PI2, ns=((h.sa-(-Math.PI/2))+PI2)%PI2, ne=((h.ea-(-Math.PI/2))+PI2)%PI2;
+    const ok=ne>=ns?(na>=ns&&na<=ne):(na>=ns||na<=ne);
+    if(ok)return h.node;
+  }return null;
+}
+function findTM(x,y){for(let i=tRects.length-1;i>=0;i--){const r=tRects[i];if(x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h)return r.node;}return null;}
+
+let lastH=null;
+function onHover(e){
+  const {x,y}=cpos(e);
+  const nd=mode==='rings'?findRing(x,y):findTM(x,y);
+  if(nd===lastH)return; lastH=nd;
+  const lbl=document.getElementById('chart-label');
+  if(nd){
+    const wr=document.getElementById('chart-wrap').getBoundingClientRect();
+    lbl.querySelector('strong').textContent=nd.name;
+    lbl.querySelector('span').textContent=fmt(nd.size)+(nd.items?' · '+fmtN(nd.items):'');
+    let lx=e.clientX-wr.left+12, ly=e.clientY-wr.top-44;
+    lx=Math.min(lx,wr.width-160); ly=Math.max(ly,4);
+    lbl.style.left=lx+'px'; lbl.style.top=ly+'px';
+    lbl.classList.add('show');
+  }else lbl.classList.remove('show');
+}
+function onClick(e){
+  const{x,y}=cpos(e);
+  const nd=mode==='rings'?findRing(x,y):findTM(x,y);
+  if(!nd)return;
+  if(nd.children&&nd.children.length>0)into(nd);
+  else toast(nd.name,fmt(nd.size)+(nd.modified?' · '+nd.modified:''));
+}
+
+// ═══════════════ LIST ═══════════════
+function getSorted(n){
+  if(!n.children)return[];
+  return [...n.children].sort((a,b)=>sortAsc?a.size-b.size:b.size-a.size);
+}
+function buildRows(n,d){
+  const rows=[];
+  getSorted(n).forEach(c=>{
+    const k=pkey(c);
+    rows.push({node:c,depth:d,key:k});
+    if(expanded.has(k)&&c.children&&c.children.length>0)rows.push(...buildRows(c,d+1));
+  });
+  return rows;
+}
+function renderList(){
+  const rows=buildRows(cur(),0);
+  document.getElementById('file-list').innerHTML=rows.map(r=>{
+    const{node:n,depth:d,key:k}=r;
+    const hasCh=n.children&&n.children.length>0;
+    const isExp=expanded.has(k);
+    const pl=12+d*18;
+    return `<div class="file-row" style="padding-left:${pl}px" onclick="onRow('${k}')" oncontextmenu="onLong(event,'${k}')">
+      <button class="exp-btn${isExp?' open':''}" onclick="togExp(event,'${k}')">${hasCh?'›':''}</button>
+      <div class="swatch" style="background:${n.color==='transparent'?'transparent;border-color:var(--border)':n.color}"></div>
+      <span class="fname${n.size===0?' dim':''}">${n.name}</span>
+      <span class="cval sz">${n.size>0?fmt(n.size):''}</span>
+      <span class="cval it">${n.items>0?fmtN(n.items):''}</span>
+      <span class="cval md">${n.modified||''}</span>
+    </div>`;
+  }).join('');
+}
+
+function findByKey(parent,k){
+  if(!parent.children)return null;
+  for(const c of parent.children){if(pkey(c)===k)return c;const f=findByKey(c,k);if(f)return f;}return null;
+}
+function onRow(k){const n=findByKey(cur(),k);if(!n)return;if(n.children&&n.children.length>0)into(n);else toast(n.name,fmt(n.size)+(n.modified?' · '+n.modified:''));}
+function togExp(e,k){e.stopPropagation();if(expanded.has(k))expanded.delete(k);else expanded.add(k);renderList();}
+function onLong(e,k){e.preventDefault();const n=findByKey(cur(),k);if(!n)return;delTarget=n;document.getElementById('del-name').textContent=`Delete "${n.name}" (${fmt(n.size)})?`;document.getElementById('del-bar').classList.add('show');}
+function cancelDel(){delTarget=null;document.getElementById('del-bar').classList.remove('show');}
+function confirmDel(){if(delTarget)toast('Deleted',`"${delTarget.name}" removed (simulated)`);cancelDel();}
+function toggleSort(){sortAsc=!sortAsc;document.getElementById('sort-hdr').textContent='Size '+(sortAsc?'▼':'▲');renderList();}
+
+// ═══════════════ TOAST ═══════════════
+function toast(title,sub){
+  const t=document.getElementById('toast');
+  t.innerHTML=`<strong>${title}</strong>${sub}`;
+  t.classList.add('show');clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// ═══════════════ SCAN ═══════════════
+const PATHS=['/home/user/Downloads','/home/user/.cache','/usr/lib/x86_64-linux-gnu','/usr/share/locale','/var/log/journal','/opt/google/chrome','/usr/lib/firmware','/var/cache/apt','/home/user/Documents/Projects','/boot/grub','/etc/systemd'];
+function startScan(){
+  const ov=document.getElementById('scan-ov');
+  const pe=document.getElementById('scan-path');
+  const pte=document.getElementById('scan-pct');
+  const f=document.getElementById('scan-fill');
+  ov.classList.add('active');
+  let pct=0,i=0;
+  const iv=setInterval(()=>{
+    pct=Math.min(100,pct+Math.random()*11+4);
+    f.style.width=pct+'%'; pte.textContent=Math.floor(pct)+'%';
+    pe.textContent=PATHS[i%PATHS.length]; i++;
+    if(pct>=100){clearInterval(iv);setTimeout(()=>{ov.classList.remove('active');f.style.width='0%';render();toast('Scan complete','46.7 GB · 566,623 items found');},500);}
+  },280);
+}
+
+// ═══════════════ INIT ═══════════════
+window.addEventListener('DOMContentLoaded',()=>{initChart();render();});
+</script>
+</body>
+</html>
